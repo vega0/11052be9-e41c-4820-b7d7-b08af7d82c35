@@ -401,6 +401,9 @@ end);
     Для работы со внутренним устройством, используется component. С его помощью можно использовать функции встроенных модулей. 
   Читать тут http://minecraft-ru.gamepedia.com/OpenComputers/Component_API
 
+    Оффициальный доки
+  http://ocdoc.cil.li/
+
     Дамп _G таблицы из скрипта init.lua:
 
         1. boot_invoke : function
