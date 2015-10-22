@@ -368,10 +368,6 @@ end
 
 computer.beep(1000, 0.2)
 
--- убераем флаг инициализации
-
-_G.IN_INIT = nil;
-
 -- замораживаем работу скрипта, т.к. выход из него пораждает ошибку computer halted (!)
 ask("Продолжить выполнение скрипта вкачестве слушателя событий и вывода их на экран?", {good = "No", "Yes"}, nil, function()
   print(string.fmt("dropped to the main event cycle. RAM (%i/%i) kib", computer.freeMemory()/1024, computer.totalMemory()/1024));
@@ -439,6 +435,6 @@ end);
        29. ipairs : function
 ]]
 
--- Устанавливаем флаг, который говорит о том что инициализация завершилась.
+-- убераем флаг инициализации
 
 _G.IN_INIT = nil;
