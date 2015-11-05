@@ -1,0 +1,1 @@
+kernelGeneralWarning Возникло исчклюение %s!

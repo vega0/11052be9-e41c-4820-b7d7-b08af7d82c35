@@ -1,9 +1,78 @@
--- определяем свойства и конфигурации
+--[[
+  component.list(); -- возращает таблицу
+  component.list(stringName); -- возвращает таблицу
+  component.invoke(stringAddress, stringMethod, vaArguments); -- метод включения метода по адресу.
+  component.proxy(stringDddress); -- возращает более юзабельный объект, для которого можно напрямую вызывать методы по имени, без invoke.
 
-_G.OS_VERSION = 0.1;
-_G.OS_NAME = "Операционная система";
-_G.IN_INIT = true;
-_G.AsksEnabled = true;
+  -- eeprom - компонент, наш загрузочный скрипт
+
+  eeprom.getData():stringAddress - возращает адрес filesystem с которой он загрузил init.lua
+
+  -- rom - компонент filesystem
+  rom.open(stringFile);
+  rom.read(numberHandle, numberSize);
+  rom.close(numberHandle) 
+
+    Для работы со внешним интерфейсом, используется функция computer.pullSignal(). Читать тут http://minecraft-ru.gamepedia.com/OpenComputers/%D0%A1%D0%B8%D0%B3%D0%BD%D0%B0%D0%BB%D1%8B
+  во внешний интерйес входят клавиатуры, мониторы, и т.д. смотреть по ссылке перечень событий.
+
+    Для работы со внутренним устройством, используется component. С его помощью можно использовать функции встроенных модулей. 
+  Читать тут http://minecraft-ru.gamepedia.com/OpenComputers/Component_API
+
+    Оффициальный доки
+  http://ocdoc.cil.li/
+
+    Дамп _G таблицы из скрипта init.lua:
+
+        1. boot_invoke : function
+        2. coroutine : table
+        3. table : table
+        4. load : function
+        5. rawget : function
+        6. tonumber : function
+        5. bit32 : table
+        6. unicode : table
+        7. computer : table
+        8. debug : table
+        9. rawset : function
+       10. xpcall : function 
+       11. checkArg : function
+       12. next : function
+       13. setmetatable : function
+       14. pcall : function
+       15. assert : function
+       16. getmetatable : function
+       17. rawlen : function 
+       18. error : function
+       19. math : table
+       20. type : function
+       21. component : table
+       22. os : table
+       23. string : table
+       24. _VERSION : "Lua 5.2"
+       25. tostring : function
+       26. rawequal : function
+       27. pairs : function
+       28. select : function
+       29. ipairs : function
+]]
+
+local function load_fields_and_configs()
+  -- определяем свойства и конфигурации
+
+  _G._OSVERSION = "Upgraded OpenOS v1.0";
+  _G.IN_INIT = true;
+  _G.AsksEnabled = true;
+end
+
+local function unload_fields_and_configs()
+  -- снимаем временные определения.
+
+  _G.IN_INIT = nil;
+  --_G.AsksEnabled = nil;
+end
+
+load_fields_and_configs();
 
 -- ищем дисплей с клавиатурой
 
@@ -48,16 +117,6 @@ do
   resolution.h = h;
 end
 
--- добавляем функцию в table для конкатернации таблиц с опущенным клюем (!) порядок параметров не сохраняется
-
-function table.concat_raw( tbl, ... )
-  local stack = {};
-  for k, v in ipairs( tbl ) do
-    table.insert(stack, v);
-  end
-  return table.concat(stack, ...);
-end
-
 -- устанавливаем разрешение дисплея
 
 gpu.setResolution(gpu.getResolution());
@@ -82,9 +141,9 @@ unicode.length = unicode.len;
 
 display_clear();
 
--- имплементация временных функцйи
+-- имплементация временных функцйи терминала
 
-local write, backspace, print, newline,
+local write, backspace, print, newline, status,
   log, input, ask
 
 do
@@ -142,6 +201,14 @@ do
     cursor.x = 1;
     cursor.y = cursor.y + 1;
     scroll_down_if_its_possible();
+  end
+
+  function status( str )
+    checkArg(1, str, "string");
+
+    gpu.fill(cursor.x, cursor.y, resolution.w, 1, string.char(32));
+    write(str);
+    cursor.x = 1;
   end
 
   do
@@ -218,50 +285,54 @@ do
   end
 end
 
--- выводим на экран приветствие, говорим о том что все хорошо;
-
-print("Доброго времени суток (!)");
-
--- выводим список компонентов
-
-for address, name in component.list() do
-  log(address, name);
-end
-
--- выводим значения глобальной таблицы
-
-log("вывод глобальной таблицы на экран", nil, "lbl");
-
-for k, v in pairs( _G ) do
-  log(k, tostring(v));
-end
-
 -- определение eeprom
 
 local eeprom = component.proxy(component.list("eeprom")())
 
---[[
-  eeprom.getData() - возращает адрес файловой системы с которой произошла загрузка.
-]]
+-- имплементация rom
 
--- временная имплементация rom
-
-local rom = component.proxy(eeprom.getData());
+_G.rom = component.proxy(eeprom.getData());
 
 if( not rom or rom == nil ) then
   error("ROM initialization failed");
 end
 
--- запускаем testsuit.lua
+-- имплементируем функуцию объединения путей
 
-ask("Хотите ли вы произвести тестирование?", {good = "Yes", "No"}, function()
-  do
-    log("Начало загрузки файла", "testsuit.lua");
+function rom.concat(...)
+  local args, fullpath = {...}, '';
 
-    local jandle, reason = rom.open("testsuit.lua"); -- открываем фаил
+  for _, path in ipairs(args) do
+    if(type(path) ~= "string") then error("Пути должны быть строковыми"); end
+    fullpath = fullpath .. "/" .. path;
+  end
+
+  return fullpath;
+end
+
+-- имплементация временных функций подгрузки файлов
+
+local load_file;
+
+do
+  local protected_environment = 
+  {
+    print = print, write = write, 
+    log = log, rom = rom, tostring = tostring, 
+    pairs = pairs, math = math, this = {},
+    string = string, unicode = unicode, ask = ask
+  }
+
+  function load_file( path_to_file, flag )
+    checkArg(1, path_to_file, "string"); -- на время дебага                                                                                                             fixme(!) убрать все лишние проверки там где это уже не понадобится.
+    if(flag) then checkArg(2, flag, "boolean"); end
+
+    log("Начало загрузки файла", path_to_file);
+
+    local jandle, reason = rom.open(path_to_file); -- открываем фаил
 
     if( not jandle ) then
-      error("Coul'd not open testsuit.lua: " .. reason);
+      error(string.fmt("Coul'd not open (%s): ", path_to_file) .. reason);
     end
 
     local buffer, counter = '', 0;
@@ -283,21 +354,28 @@ ask("Хотите ли вы произвести тестирование?", {go
     log("Текстовый фаил загружен в буфер", 
       string.fmt("длинна (%i), подходов к считыванию (%i)", string.len(buffer), counter));
 
+    -- определяем this
+
+    function protected_environment.this.filename()
+      local last_variant;
+      for variant in string.gmatch(path_to_file, "([^/]+)%.") do
+        last_variant = variant;
+      end
+      return last_variant;
+    end
+
     -- загружаем текстовый буфер
 
-    local chunk;
-    chunk, reason = load(buffer, nil, 't', 
-      { 
-        print = print, write = write, 
-        log = log, rom = rom, tostring = tostring, 
-        pairs = pairs, math = math, 
-        string = string, this = {filename = function() return "testsuit" end},
-        unicode = unicode, ask = ask
-      } -- определяем окружение
-    );
+    local chunk; 
 
-    if(not chunk) then
-      error("Chunk error: " .. reason);
+    if( not flag or flag == false ) then 
+      chunk, reason = load(buffer, nil, 't', protected_environment);
+    else
+      chunk, reason = load(buffer);
+    end
+
+    if (not chunk) then
+      error("Chunk error: " .. tostring(reason));
     end
 
     -- запускаем чанк с помощью безопасного вызова (protected call)
@@ -308,133 +386,76 @@ ask("Хотите ли вы произвести тестирование?", {go
       error("Chunk raised error: " .. tostring(err));
     end
   end
-end )
+end
+--[[
+-- выводим на экран приветствие, говорим о том что все хорошо;
 
--- т.к. разработчики нам любезно нихуя не предоставили, имеем в наличии internal реализацию стандартных функций.
+print("Доброго времени суток (!)");
 
-function loadfile(file)
-  checkArg(1, file, "string");
+-- выводим список компонентов
 
-  local jandle, reason = rom.open(file); -- открываем фаил
+for address, name in component.list() do
+  log(address, name);
+end
 
-  if( not jandle ) then
-    error(string.fmt("Не удалось открыть :%s: %s", file, reason));
-  end
+-- выводим значения глобальной таблицы
 
-  local buffer, counter = '', 0;
+log("вывод глобальной таблицы на экран", nil, "lbl");
 
-  repeat
-    local data;
-    data, reason = rom.read(jandle, math.huge); -- читаем линию из файла
+for k, v in pairs( _G ) do
+  log(k, tostring(v));
+end
+]]
 
-    if ( not data and reason ) then
-      error(string.fmt("Не удалось прочитать :%s: %s", file, reason));
+-- выгружаем временные конфигурации.
+
+unload_fields_and_configs();
+
+-- подгружаем локализацию
+
+load_file("lang/lang.lua", true);
+
+-- подгружаем ядро системы
+
+load_file("kernel/kernel.lua", true);
+
+-- подгружаем скрипты из папки autorun
+
+do
+  local files_counter = 0;
+  for _, path in ipairs(rom.list("/autorun")) do
+    status(string.fmt("> загрузка %s", path));
+
+    local result, err = pcall(dofile, rom.concat("/autorun", path));
+
+    if(not result) then
+      print(string.fmt("Фаил (%s) завершился с ошибкой: %s", path, tostring(err)));
+    else
+      files_counter = files_counter + 1;
     end
-
-    buffer = buffer .. (data or "");
-    counter = counter + 1;
-  until not data;
-
-  rom.close(jandle);
-
-  -- загружаем текстовый буфер
-
-  jandle, reason = load(buffer, "=" .. file);
-
-  if( not jandle ) then
-    error(string.fmt("Ошибка синтаксиса в файле :%s: %s", file, tostring(reason)));
   end
 
-  return jandle; 
+  status(string.fmt("Директория автозапуска выполнена: файлов(%i), успешно(%i)", #rom.list("/autorun"), files_counter));
+  newline();
 end
 
-function dofile(file)
-  local result, reason = loadfile(file);
+-- запускаем тесты
 
-  if( not result ) then
-    error("Ошибка в связи с загрузкой чанка: " .. reason);
+ask("Хотите ли вы произвести тестирование", {good = "Yes", "No"}, function()
+  for _, file in ipairs(rom.list("/testsuits")) do
+    ask(string.fmt("запустить тест (%s)", file), {good = "Yes", "No"}, function()
+      load_file(rom.concat("testsuits", file));
+    end)
   end
-
-  result, reason = pcall(result);
-
-  if( not result ) then
-    error("Во время выполнения безопасного вызова произошла ошибка: " .. tostring(reason));
-  end
-
-  return reason;
-end
+end )
 
 -- подаем сигнал о том что инициализация завершилась
 
 computer.beep(1000, 0.2)
 
 -- замораживаем работу скрипта, т.к. выход из него пораждает ошибку computer halted (!)
-ask("Продолжить выполнение скрипта вкачестве слушателя событий и вывода их на экран?", {good = "No", "Yes"}, nil, function()
+
+ask("Продолжить выполнение скрипта вкачестве слушателя событий и вывода их на экран", {good = "No", "Yes"}, nil, function()
   print(string.fmt("dropped to the main event cycle. RAM (%i/%i) kib", computer.freeMemory()/1024, computer.totalMemory()/1024));
   while true do print(computer.pullSignal()); end
 end);
-
-
-
---[[
-  component.list(); -- возращает таблицу
-  component.list(stringName); -- возвращает таблицу
-  component.invoke(stringAddress, stringMethod, vaArguments); -- метод включения метода по адресу.
-  component.proxy(stringDddress); -- возращает более юзабельный объект, для которого можно напрямую вызывать методы по имени, без invoke.
-
-  -- eeprom - компонент, наш загрузочный скрипт
-
-  eeprom.getData():stringAddress - возращает адрес filesystem с которой он загрузил init.lua
-
-  -- rom - компонент filesystem
-  rom.open(stringFile);
-  rom.read(numberHandle, numberSize);
-  rom.close(numberHandle) 
-
-    Для работы со внешним интерфейсом, используется функция computer.pullSignal(). Читать тут http://minecraft-ru.gamepedia.com/OpenComputers/%D0%A1%D0%B8%D0%B3%D0%BD%D0%B0%D0%BB%D1%8B
-  во внешний интерйес входят клавиатуры, мониторы, и т.д. смотреть по ссылке перечень событий.
-
-    Для работы со внутренним устройством, используется component. С его помощью можно использовать функции встроенных модулей. 
-  Читать тут http://minecraft-ru.gamepedia.com/OpenComputers/Component_API
-
-    Оффициальный доки
-  http://ocdoc.cil.li/
-
-    Дамп _G таблицы из скрипта init.lua:
-
-        1. boot_invoke : function
-        2. coroutine : table
-        3. table : table
-        4. load : function
-        5. rawget : function
-        6. tonumber : function
-        5. bit32 : table
-        6. unicode : table
-        7. computer : table
-        8. debug : table
-        9. rawset : function
-       10. xpcall : function 
-       11. checkArg : function
-       12. next : function
-       13. setmetatable : function
-       14. pcall : function
-       15. assert : function
-       16. getmetatable : function
-       17. rawlen : function 
-       18. error : function
-       19. math : table
-       20. type : function
-       21. component : table
-       22. os : table
-       23. string : table
-       24. _VERSION : "Lua 5.2"
-       25. tostring : function
-       26. rawequal : function
-       27. pairs : function
-       28. select : function
-       29. ipairs : function
-]]
-
--- убераем флаг инициализации
-
-_G.IN_INIT = nil;

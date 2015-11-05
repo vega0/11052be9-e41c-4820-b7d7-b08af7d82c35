@@ -7,19 +7,32 @@ print(tostring(_G), tostring(_G == nil)); -- временное решение.
 
 -- удаляем все директории начинающиеся на префикс this.filename();
 
+print("Название этого файла", this.filename());
+
 for _, path in pairs(rom.list("/")) do
 	if(string.sub(path, 1, string.length(this.filename())) == this.filename()) then
-		if rom.isDirectory(path) and not rom.remove(path) then
-			error(string.fmt("Невозможно удалить: %s", path));
+
+		print(string.fmt("Фаил %s попадает под условие", path))
+
+		if(rom.isDirectory(path)) then	
+			print("    и удалится", path);
 		end
+
+		--if rom.isDirectory(path) and not rom.remove(path) then
+		--	error(string.fmt("Невозможно удалить: %s", path));
+		--end
 	end
 end
 
 -- создаем директорию со случайным именем
 
-if not rom.makeDirectory(string.fmt("%s_%x", this.filename(), math.random(0, 0xffffffff))) then
-	error("Не получилось создать директорию!")
-end
+local tmp_directory = string.fmt("%s_%x", this.filename(), math.random(0, 0xffffffff));
+
+print(tmp_directory);
+
+--if not rom.makeDirectory(tmp_directory) then
+--	error("Не получилось создать директорию!")
+--end
 
 -- тестим ask
 
@@ -39,7 +52,9 @@ while true do
 	end
 
 end
+
 -- тестим юиникод
+
 do
 	local function print_with_length(str)
 		print(string.fmt("normal '%s' (len '%s') дважды объедененный '%s'", str, string.length(str), str .. str));
@@ -62,4 +77,24 @@ do
 			write(unicode.char(i));
 		end
 	end)
+end
+
+-- имплементация функуци генерирования рандомного мусора
+
+do
+
+	print("Временная директория", tmp_directory);
+
+	local code = [[
+		-- this is random junk which number is %i
+	]]
+
+	local function generate_random_junk(directory)
+		local hom_much = math.random(1, 25);
+
+		for i = 0, how_much do
+			
+		end
+	end
+
 end
